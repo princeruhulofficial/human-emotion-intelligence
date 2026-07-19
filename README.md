@@ -9,11 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence"><img src="https://img.shields.io/badge/Status-MVP-blue?style=flat-square" alt="Status"></a>
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence"><img src="https://img.shields.io/badge/Version-0.1.1-green?style=flat-square" alt="Version"></a>
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence"><img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square" alt="Python"></a>
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence"><img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square" alt="TypeScript"></a>
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/Status-MVP-blue?style=flat-square" alt="Status">
+  <img src="https://img.shields.io/badge/Version-0.2.0-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square" alt="Python">
+  <img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square" alt="TypeScript">
+  <img src="https://img.shields.io/badge/MCP-Supported-purple?style=flat-square" alt="MCP">
+  <img src="https://img.shields.io/badge/HTTP_API-Ready-orange?style=flat-square" alt="HTTP API">
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
 </p>
 
 ---
@@ -28,6 +30,7 @@ Instead of prompting an LLM to "be empathetic", HEI first:
 2. Understands emotional intent
 3. Plans a response strategy
 4. Evaluates and optionally rewrites the final answer
+5. Remembers emotional context across turns
 
 **Result:** AI responses that make people feel genuinely understood.
 
@@ -36,103 +39,67 @@ Instead of prompting an LLM to "be empathetic", HEI first:
 
 ---
 
-### Why HEI?
+### Access Points (v0.2.0)
 
-| Problem with current AI | How HEI helps |
-|-------------------------|---------------|
-| Generic "I'm sorry to hear that" | Detects real emotion + hidden layers |
-| Robotic tone | Plans warmth, directness, formality |
-| Inconsistent empathy | Structured strategy before generation |
-| No emotional memory or intent | Intent detection + response planning |
-| Hard to evaluate quality | Built-in evaluation + auto-rewrite |
-
-HEI is **model-agnostic**. It works with OpenAI, OpenRouter, Groq, local models, or any OpenAI-compatible API.
+| Interface | Status | Use when |
+|-----------|--------|----------|
+| **Python SDK** | Ready | Backend services, notebooks, scripts |
+| **TypeScript SDK** | Ready | Node.js / frontend agents |
+| **MCP Server** | Ready | Claude Desktop, Cursor, Windsurf |
+| **HTTP API** | Ready | API Gateway, microservices, any language |
 
 ---
 
-### Quick Start
-
-#### Python
+### Quick Start (Python)
 
 ```bash
 git clone https://github.com/princeruhulofficial/human-emotion-intelligence.git
 cd human-emotion-intelligence
 pip install -e .
-cp .env.example .env          # add your API key
+cp .env.example .env
 python examples/basic_usage.py
 ```
 
 ```python
 from hei import HEI
 
-hei = HEI(api_key="sk-...", model="gpt-4o-mini")
+hei = HEI(api_key="sk-...")
 
-result = hei.analyze("I guess my startup is over.")
+result = hei.analyze("I guess my startup is over.", session_id="user_123")
 
 print(result.emotion.primary)           # sadness
-print(result.emotion.hidden)            # fear / disappointment
+print(result.emotion.hidden)            # fear
 print(result.intent.primary_intent)     # seeking_comfort
 print(result.strategy.suggested_approach)
 ```
 
-#### TypeScript
+### MCP (Claude / Cursor)
 
 ```bash
-cd packages/ts && npm install && npm run build
+pip install -e ".[mcp]"
+export HEI_MCP_TOKEN=your-secret
+python -m hei.mcp_server
 ```
 
-```ts
-import { HEI } from "@hei/sdk";
+### HTTP API (API Gateway ready)
 
-const hei = new HEI({
-  apiKey: process.env.OPENAI_API_KEY!,
-  baseURL: "https://openrouter.ai/api/v1",
-  model: "google/gemma-2-9b-it:free",
-});
-
-const result = await hei.analyze("I guess my startup is over.");
-console.log(result.emotion.primary);
-console.log(result.strategy.suggested_approach);
-```
-
-#### Free Testing with OpenRouter
-
-```env
-OPENAI_API_KEY=sk-or-v1-your-key
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-HEI_MODEL=google/gemma-2-9b-it:free
+```bash
+pip install -e ".[api]"
+export HEI_API_TOKEN=your-secret
+uvicorn hei.api:app --host 0.0.0.0 --port 8000
 ```
 
 ---
 
-### Core Features (v0.1.1)
+### Core Features
 
-- **Emotion Detection** — Primary, Secondary, Hidden emotions + Intensity (1-10)
-- **Emotional Intent Detection** — seeking comfort, venting, celebrating, etc.
-- **Response Strategy Planner** — Decides tone, approach, and things to avoid
-- **Evaluation + Auto Rewrite** — Scores empathy, human-likeness, safety, clarity
-- **Model Agnostic** — Works with any OpenAI-compatible endpoint
-- **Type-safe SDKs** — Python (Pydantic) + TypeScript (Zod)
-- **Production Hardened** — Input validation, timeouts, proper error handling
-
----
-
-### Architecture
-
-```text
-User Message
-      ↓
-Emotion Analyzer  →  Intent Detector  →  Strategy Planner
-      ↓
-LLM (any model)
-      ↓
-Evaluation Engine (+ optional rewrite)
-      ↓
-Final Response
-```
-
-HEI does **not** replace your LLM.  
-It makes every LLM emotionally smarter.
+- Emotion Detection (Primary + Secondary + Hidden + Intensity)
+- Emotional Intent Detection
+- Response Strategy Planner
+- Evaluation + Auto Rewrite
+- **Emotional Memory** (session timeline + mood shift)
+- Model Agnostic (OpenAI, OpenRouter, Groq, local...)
+- Production hardening (validation, auth, rate limits)
 
 ---
 
@@ -141,52 +108,17 @@ It makes every LLM emotionally smarter.
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [API Reference](docs/api-reference.md)
+- [MCP Server](docs/mcp.md)
+- [HTTP API / Gateway](docs/api-gateway.md)
 - [Philosophy](docs/philosophy.md)
 - [Changelog](CHANGELOG.md)
-- [Product Requirements Document](PRD.md)
-
----
-
-### Use Cases
-
-- AI Companions & Character chat
-- Customer Support agents
-- Coaching & Mentoring bots
-- Mental wellness applications (with proper safety boundaries)
-- Education platforms
-- Any product where conversation quality matters
 
 ---
 
 ### Non-Goals
 
-HEI will never:
-- Claim to be a therapist
-- Claim to "know" emotions with certainty
-- Act as a lie detector or mind reader
-- Be used as a manipulation engine
-
-We optimize for **feeling understood**, not for emotional surveillance.
-
----
-
-### Roadmap
-
-- [x] Python SDK
-- [x] TypeScript SDK
-- [x] Emotion + Intent + Strategy + Evaluation
-- [x] Golden dataset + tests
-- [x] Production hardening (validation, errors, timeouts)
-- [ ] Emotional Memory
-- [ ] Cultural Awareness
-- [ ] MCP Server
-- [ ] Deeper evaluation metrics & dashboards
-
----
-
-### Contributing
-
-This is early-stage open source. Feedback, issues, and pull requests are very welcome.
+HEI will never claim to be a therapist, mind reader, or manipulation tool.  
+We optimize for **feeling understood**, not emotional surveillance.
 
 ---
 
@@ -198,5 +130,5 @@ MIT
 
 <p align="center">
   Built with ❤️ by the Founding Team<br>
-  <a href="https://github.com/princeruhulofficial/human-emotion-intelligence">GitHub</a>
+  <strong>v0.2.0</strong> — Shipped 19 July 2026
 </p>
