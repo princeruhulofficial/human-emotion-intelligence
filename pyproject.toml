@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "human-emotion-intelligence"
-version = "0.1.1"
+version = "0.2.0"
 description = "Human Emotion Intelligence (HEI) - Conversation Intelligence Layer for AI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = "MIT"
 authors = [
     { name = "Founding Team", email = "princeruhulofficial@gmail.com" }
 ]
-keywords = ["emotion", "ai", "llm", "empathy", "conversation", "intelligence"]
+keywords = ["emotion", "ai", "llm", "empathy", "conversation", "intelligence", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -37,10 +37,16 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+mcp = [
+    "mcp>=1.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/princeruhulofficial/human-emotion-intelligence"
 Repository = "https://github.com/princeruhulofficial/human-emotion-intelligence"
+
+[project.scripts]
+hei-mcp = "hei.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hei"]
