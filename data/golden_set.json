@@ -1,0 +1,67 @@
+[
+  {
+    "id": "startup_failure_01",
+    "message": "I guess my startup is over.",
+    "expected_primary": "sadness",
+    "expected_hidden": ["fear", "disappointment", "shame"],
+    "expected_intent": "seeking_comfort",
+    "notes": "Classic loss + identity hit. Should detect deeper layers."
+  },
+  {
+    "id": "im_fine_01",
+    "message": "I'm fine.",
+    "expected_primary": "neutral",
+    "expected_hidden": ["sadness", "frustration", "loneliness"],
+    "expected_intent": "seeking_comfort",
+    "notes": "Classic hidden emotion case. High chance of suppressed negative feeling."
+  },
+  {
+    "id": "job_offer_01",
+    "message": "I just got the job!!!",
+    "expected_primary": "excitement",
+    "expected_secondary": ["happiness", "pride"],
+    "expected_intent": "celebrating",
+    "notes": "Clear positive emotion with high intensity."
+  },
+  {
+    "id": "ignored_01",
+    "message": "Nobody even asked how I was today.",
+    "expected_primary": "loneliness",
+    "expected_secondary": ["sadness", "frustration"],
+    "expected_intent": "seeking_validation",
+    "notes": "Loneliness + need for recognition."
+  },
+  {
+    "id": "burnout_01",
+    "message": "I can't do this anymore. I'm just so tired of everything.",
+    "expected_primary": "frustration",
+    "expected_secondary": ["sadness", "anxiety"],
+    "expected_hidden": ["hopelessness"],
+    "expected_intent": "venting",
+    "notes": "Burnout language. Needs careful, non-minimizing response."
+  },
+  {
+    "id": "ambiguous_ok_01",
+    "message": "It's okay.",
+    "expected_primary": "neutral",
+    "expected_hidden": ["disappointment", "resignation", "sadness"],
+    "expected_intent": "unknown",
+    "notes": "Very ambiguous. Should stay low confidence."
+  },
+  {
+    "id": "anger_01",
+    "message": "I can't believe they did this to me after everything I did for them.",
+    "expected_primary": "anger",
+    "expected_secondary": ["frustration", "betrayal"],
+    "expected_intent": "venting",
+    "notes": "Clear anger with sense of injustice."
+  },
+  {
+    "id": "hope_01",
+    "message": "Maybe things will finally start looking up.",
+    "expected_primary": "hope",
+    "expected_secondary": ["anxiety"],
+    "expected_intent": "sharing",
+    "notes": "Hope mixed with residual doubt."
+  }
+]

@@ -8,7 +8,7 @@ from .emotion import EmotionAnalyzer
 from .intent import IntentDetector
 from .strategy import StrategyPlanner
 from .evaluation import ResponseEvaluator
-from .models import HEIResponse, EvaluationResult
+from .models import HEIResponse, EvaluationResult, StrategyResult
 
 
 class HEI:
@@ -66,7 +66,38 @@ class HEI:
         self,
         original_message: str,
         generated_response: str,
-        strategy,
+        strategy: StrategyResult,
     ) -> EvaluationResult:
         """Evaluate a generated response against the planned strategy."""
         return self.evaluator.evaluate(original_message, generated_response, strategy)
+
+    def improve_response(
+        self,
+        original_message: str,
+        generated_response: str,
+        strategy: StrategyResult,
+        max_attempts: int = 1,
+    ) -> tuple[str, EvaluationResult]:
+        """
+        Evaluate a response and automatically rewrite it if quality is low.
+
+        Returns:
+            (final_response, evaluation)
+        """
+        evaluation = self.evaluate_response(original_message, generated_response, strategy)
+
+        if not evaluation.should_rewrite or max_attempts <= 0:
+            return generated_response, evaluation
+
+        # Rewrite using feedback
+        improved = self.evaluator.rewrite(
+            original_message=original_message,
+            previous_response=generated_response,
+            strategy=strategy,
+            feedback=evaluation.feedback,
+        )
+
+        # Optional: re-evaluate the improved version
+        final_eval = self.evaluate_response(original_message, improved, strategy)
+
+        return improved, final_eval
