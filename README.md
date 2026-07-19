@@ -1,50 +1,88 @@
 # Human Emotion Intelligence (HEI)
 
-**The Emotional Intelligence Infrastructure Layer for AI**
+**Give AI emotional intelligence, not just intelligence.**
 
-[![Status](https://img.shields.io/badge/Status-Draft-yellow)]()
-[![Version](https://img.shields.io/badge/Version-1.0-blue)]()
-[![Category](https://img.shields.io/badge/Category-AI%20Infrastructure-purple)]()
+[![Status](https://img.shields.io/badge/Status-MVP-blue)]()
+[![Version](https://img.shields.io/badge/Version-0.1.0-green)]()
+[![Python](https://img.shields.io/badge/Python-3.10+-blue)]()
 
-## Overview
+HEI is a **Conversation Intelligence Layer** that sits between the user and any LLM.  
+It analyzes emotion, detects intent, plans a response strategy, and evaluates the final output — so people feel genuinely understood.
 
-Human Emotion Intelligence (HEI) is an AI infrastructure layer that enables any Large Language Model (LLM) or AI agent to understand, reason about, and respond to human emotions more effectively.
+> Instead of asking an LLM to "be empathetic", HEI provides structured emotional reasoning before generation.
 
-Instead of replacing an LLM, HEI acts as an emotional intelligence engine between the user and the model. It analyzes emotional context, infers intent, plans an appropriate response strategy, and evaluates the generated output for empathy, clarity, safety, and emotional consistency.
+## Quick Start
 
-HEI is designed as a reusable **SDK**, **API**, and **Model Context Protocol (MCP)** skill that can integrate with GPT, Claude, Gemini, Grok, Llama, Kimi, DeepSeek, and future foundation models.
+```bash
+pip install -e .
+export OPENAI_API_KEY=sk-...
+python examples/basic_usage.py
+```
 
-## Vision
+```python
+from hei import HEI
 
-> Build the emotional intelligence layer for AI.
->
-> Future AI will not only answer questions.
-> It will understand people.
->
-> HEI provides that capability.
+hei = HEI(api_key="sk-...")
 
-## Mission
+result = hei.analyze("I guess my startup is over.")
 
-Enable every AI system to:
+print(result.emotion.primary)          # sadness
+print(result.emotion.hidden)           # fear / disappointment
+print(result.intent.primary_intent)    # seeking_comfort
+print(result.strategy.suggested_approach)
+```
 
-- Understand emotions
-- Understand emotional intent
-- Respond appropriately
-- Write naturally
-- Adapt communication style
-- Maintain emotional consistency
-- Respect cultural differences
-- Avoid emotionally harmful responses
+## MVP Modules (v0.1)
 
-## Full Product Requirements Document
+1. **Emotion Detection** — Primary + Secondary + Hidden + Intensity
+2. **Emotional Intent Detection**
+3. **Response Strategy Planner**
+4. **Response Evaluation + Optional Rewrite**
 
-See the complete PRD here: **[PRD.md](./PRD.md)**
+## Architecture
 
-## Core Positioning
+```text
+User Message
+      ↓
+Emotion Analyzer
+      ↓
+Intent Detector
+      ↓
+Strategy Planner
+      ↓
+LLM (any model)
+      ↓
+Evaluation Engine
+```
 
-**The Emotional Intelligence Infrastructure for AI.**
+## Why HEI?
+
+Most AIs give generic empathy.  
+HEI plans the emotional strategy first, then lets the LLM execute it.
+
+**Result:** Responses that make people feel understood.
+
+## Non-Goals
+
+- Not a therapist
+- Not a mind reader
+- Not a manipulation tool
+- Does not claim to "know" emotions with certainty
+
+## Roadmap
+
+- [x] Core Emotion + Intent + Strategy (MVP)
+- [ ] Emotional Memory
+- [ ] Cultural Awareness
+- [ ] Personality Layer
+- [ ] TypeScript SDK
+- [ ] MCP Server
+- [ ] Self-hosted option improvements
+
+## License
+
+MIT
 
 ---
 
-*Owner: Founding Team*  
-*Status: Draft | Version: 1.0*
+Built with ❤️ by the Founding Team
