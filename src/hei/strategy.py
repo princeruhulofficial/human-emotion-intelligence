@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Optional
 from openai import OpenAI
 
 from .models import EmotionResult, IntentResult, StrategyResult, ToneConfig
@@ -13,6 +14,8 @@ STRATEGY_SYSTEM_PROMPT = """You are an expert conversation strategist.
 Your job is to plan how an AI should respond so the user feels genuinely understood.
 
 You do NOT write the final response. You only create the strategy.
+
+You may receive previous emotional context from the conversation. Use it to stay consistent and notice mood shifts.
 
 Return strict JSON:
 {
@@ -27,7 +30,7 @@ Return strict JSON:
   },
   "things_to_avoid": ["list of things the response should never do"],
   "suggested_approach": "concrete steps for the response",
-  "reasoning": "why this strategy"
+  "reasoning": "why this strategy (mention memory/mood shift if relevant)"
 }
 """
 
@@ -42,6 +45,7 @@ class StrategyPlanner:
         message: str,
         emotion: EmotionResult,
         intent: IntentResult,
+        memory_context: Optional[str] = None,
     ) -> StrategyResult:
         context = f"""User message: {message}
 
@@ -56,6 +60,9 @@ Intent analysis:
 - Primary intent: {intent.primary_intent.value}
 - Confidence: {intent.confidence}
 """
+
+        if memory_context:
+            context += f"\n\nPrevious emotional context from this conversation:\n{memory_context}"
 
         response = self.client.chat.completions.create(
             model=self.model,

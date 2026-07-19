@@ -9,6 +9,7 @@ from .emotion import EmotionAnalyzer
 from .intent import IntentDetector
 from .strategy import StrategyPlanner
 from .evaluation import ResponseEvaluator
+from .memory import EmotionalMemory, MoodShift
 from .models import HEIResponse, EvaluationResult, StrategyResult
 
 logger = logging.getLogger("hei")
@@ -30,8 +31,16 @@ class HEI:
 
     Usage:
         hei = HEI(api_key="sk-...")
+
+        # Without memory
         result = hei.analyze("I guess my startup is over.")
-        print(result.strategy.suggested_approach)
+
+        # With emotional memory
+        result = hei.analyze("I guess my startup is over.", session_id="user_123")
+        result2 = hei.analyze("I'm trying to stay positive", session_id="user_123")
+
+        timeline = hei.memory.get_timeline("user_123")
+        shift = hei.memory.detect_mood_shift("user_123")
     """
 
     MAX_MESSAGE_LENGTH = 8000
@@ -44,6 +53,7 @@ class HEI:
         client: Optional[OpenAI] = None,
         timeout: float = 30.0,
         max_retries: int = 2,
+        memory: Optional[EmotionalMemory] = None,
     ):
         if client:
             self.client = client
@@ -60,6 +70,7 @@ class HEI:
         self.intent_detector = IntentDetector(self.client, model)
         self.strategy_planner = StrategyPlanner(self.client, model)
         self.evaluator = ResponseEvaluator(self.client, model)
+        self.memory = memory or EmotionalMemory()
 
     def _validate_message(self, message: str) -> str:
         if message is None:
@@ -78,10 +89,16 @@ class HEI:
 
         return cleaned
 
-    def analyze(self, message: str) -> HEIResponse:
+    def analyze(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+    ) -> HEIResponse:
         """
         Full analysis pipeline:
         Emotion → Intent → Strategy
+
+        If session_id is provided, emotional memory is used and updated.
         """
         message = self._validate_message(message)
 
@@ -94,7 +111,27 @@ class HEI:
             )
 
             intent = self.intent_detector.detect(message, emotion_context)
-            strategy = self.strategy_planner.plan(message, emotion, intent)
+
+            # Build memory context if we have a session
+            memory_context = None
+            if session_id:
+                memory_context = self.memory.get_context_for_strategy(session_id)
+
+            strategy = self.strategy_planner.plan(
+                message=message,
+                emotion=emotion,
+                intent=intent,
+                memory_context=memory_context,
+            )
+
+            # Record this turn in memory
+            if session_id:
+                self.memory.add_turn(
+                    session_id=session_id,
+                    message=message,
+                    emotion=emotion,
+                    intent=intent,
+                )
 
             return HEIResponse(
                 emotion=emotion,
@@ -109,6 +146,10 @@ class HEI:
         except Exception as e:
             logger.exception("Unexpected error during analyze")
             raise HEIError(f"Unexpected error: {e}") from e
+
+    def get_mood_shift(self, session_id: str) -> MoodShift:
+        """Convenience method to detect mood shift for a session."""
+        return self.memory.detect_mood_shift(session_id)
 
     def evaluate_response(
         self,
