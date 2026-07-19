@@ -2,6 +2,21 @@
 
 All notable changes to Human Emotion Intelligence (HEI) will be documented in this file.
 
+## [0.2.0] - 2026-07-19
+
+### Added
+- **Emotional Memory** (major feature)
+  - Session-based emotion timeline
+  - Automatic turn recording when `session_id` is provided
+  - Mood shift detection (improving / declining / intensifying / stabilizing)
+  - Memory context injected into Strategy Planner
+  - `hei.memory.get_timeline()`, `detect_mood_shift()`, `get_context_for_strategy()`
+- New example: `examples/memory_example.py`
+
+### Changed
+- `HEI.analyze()` now accepts optional `session_id`
+- Strategy Planner can receive previous emotional context
+
 ## [0.1.1] - 2026-07-19
 
 ### Added
