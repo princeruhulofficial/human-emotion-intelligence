@@ -36,6 +36,15 @@ export const EmotionalIntentSchema = z.enum([
 
 export type EmotionalIntent = z.infer<typeof EmotionalIntentSchema>;
 
+export const ToneConfigSchema = z.object({
+  warmth: z.number().min(0).max(1).default(0.7),
+  directness: z.number().min(0).max(1).default(0.5),
+  formality: z.number().min(0).max(1).default(0.4),
+  optimism: z.number().min(0).max(1).default(0.5),
+});
+
+export type ToneConfig = z.infer<typeof ToneConfigSchema>;
+
 export const EmotionResultSchema = z.object({
   primary: PrimaryEmotionSchema,
   secondary: PrimaryEmotionSchema.nullable().optional(),
@@ -60,11 +69,11 @@ export const StrategyResultSchema = z.object({
   current_emotion: z.string(),
   target_outcome: z.string(),
   recommended_strategy: z.string(),
-  tone: z.object({
-    warmth: z.number().min(0).max(1).default(0.7),
-    directness: z.number().min(0).max(1).default(0.5),
-    formality: z.number().min(0).max(1).default(0.4),
-    optimism: z.number().min(0).max(1).default(0.5),
+  tone: ToneConfigSchema.default({
+    warmth: 0.7,
+    directness: 0.5,
+    formality: 0.4,
+    optimism: 0.5,
   }),
   things_to_avoid: z.array(z.string()).default([]),
   suggested_approach: z.string(),
@@ -100,4 +109,20 @@ export interface HEIConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
+  timeout?: number; // ms
+  maxRetries?: number;
+}
+
+export class HEIError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HEIError";
+  }
+}
+
+export class HEIValidationError extends HEIError {
+  constructor(message: string) {
+    super(message);
+    this.name = "HEIValidationError";
+  }
 }

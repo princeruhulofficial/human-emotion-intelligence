@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { z } from "zod";
 import {
   HEIConfig,
   HEIResponse,
@@ -10,6 +11,8 @@ import {
   IntentResultSchema,
   StrategyResultSchema,
   EvaluationResultSchema,
+  HEIError,
+  HEIValidationError,
 } from "./types";
 import {
   EMOTION_SYSTEM_PROMPT,
@@ -19,6 +22,8 @@ import {
   REWRITE_SYSTEM_PROMPT,
 } from "./prompts";
 
+const MAX_MESSAGE_LENGTH = 8000;
+
 export class HEI {
   private client: OpenAI;
   private model: string;
@@ -27,24 +32,57 @@ export class HEI {
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
+      timeout: config.timeout ?? 30_000,
+      maxRetries: config.maxRetries ?? 2,
     });
     this.model = config.model ?? "gpt-4o-mini";
   }
 
-  private async chatJson<T>(system: string, user: string, schema: any): Promise<T> {
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-    });
+  private validateMessage(message: string): string {
+    if (message == null) {
+      throw new HEIValidationError("message cannot be null or undefined");
+    }
+    if (typeof message !== "string") {
+      throw new HEIValidationError("message must be a string");
+    }
 
-    const content = response.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content);
-    return schema.parse(parsed) as T;
+    const cleaned = message.trim();
+    if (!cleaned) {
+      throw new HEIValidationError("message cannot be empty");
+    }
+    if (cleaned.length > MAX_MESSAGE_LENGTH) {
+      throw new HEIValidationError(
+        `message too long (${cleaned.length} chars). Max allowed: ${MAX_MESSAGE_LENGTH}`
+      );
+    }
+    return cleaned;
+  }
+
+  private async chatJson<T>(
+    system: string,
+    user: string,
+    schema: z.ZodType<T>
+  ): Promise<T> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices[0]?.message?.content ?? "{}";
+      const parsed = JSON.parse(content);
+      return schema.parse(parsed);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        throw new HEIError(`Schema validation failed: ${err.message}`);
+      }
+      throw new HEIError(`LLM call failed: ${err?.message ?? String(err)}`);
+    }
   }
 
   async analyzeEmotion(message: string): Promise<EmotionResult> {
@@ -97,20 +135,22 @@ Intent analysis:
    * Full pipeline: Emotion → Intent → Strategy
    */
   async analyze(message: string): Promise<HEIResponse> {
-    const emotion = await this.analyzeEmotion(message);
+    const clean = this.validateMessage(message);
+
+    const emotion = await this.analyzeEmotion(clean);
 
     const emotionContext =
       `${emotion.primary} (intensity ${emotion.intensity}/10)` +
       (emotion.hidden ? `, hidden: ${emotion.hidden}` : "");
 
-    const intent = await this.detectIntent(message, emotionContext);
-    const strategy = await this.planStrategy(message, emotion, intent);
+    const intent = await this.detectIntent(clean, emotionContext);
+    const strategy = await this.planStrategy(clean, emotion, intent);
 
     return {
       emotion,
       intent,
       strategy,
-      raw_message: message,
+      raw_message: clean,
       model_used: this.model,
     };
   }
@@ -120,8 +160,13 @@ Intent analysis:
     generatedResponse: string,
     strategy: StrategyResult
   ): Promise<EvaluationResult> {
+    const clean = this.validateMessage(originalMessage);
+    if (!generatedResponse?.trim()) {
+      throw new HEIValidationError("generatedResponse cannot be empty");
+    }
+
     const prompt = `Original user message:
-${originalMessage}
+${clean}
 
 Strategy that should have been followed:
 ${JSON.stringify(strategy, null, 2)}
@@ -156,16 +201,20 @@ ${feedback}
 
 Now write a significantly better response.`;
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [
-        { role: "system", content: REWRITE_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.6,
-    });
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [
+          { role: "system", content: REWRITE_SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.6,
+      });
 
-    return (response.choices[0]?.message?.content ?? "").trim();
+      return (response.choices[0]?.message?.content ?? "").trim();
+    } catch (err: any) {
+      throw new HEIError(`Rewrite failed: ${err?.message ?? String(err)}`);
+    }
   }
 
   /**
@@ -174,31 +223,24 @@ Now write a significantly better response.`;
   async improveResponse(
     originalMessage: string,
     generatedResponse: string,
-    strategy: StrategyResult
+    strategy: StrategyResult,
+    maxAttempts = 1
   ): Promise<{ response: string; evaluation: EvaluationResult }> {
-    const evaluation = await this.evaluateResponse(
-      originalMessage,
-      generatedResponse,
-      strategy
-    );
+    let current = generatedResponse;
+    let evaluation = await this.evaluateResponse(originalMessage, current, strategy);
 
-    if (!evaluation.should_rewrite) {
-      return { response: generatedResponse, evaluation };
+    let attempts = 0;
+    while (evaluation.should_rewrite && attempts < maxAttempts) {
+      attempts += 1;
+      current = await this.rewrite(
+        originalMessage,
+        current,
+        strategy,
+        evaluation.feedback
+      );
+      evaluation = await this.evaluateResponse(originalMessage, current, strategy);
     }
 
-    const improved = await this.rewrite(
-      originalMessage,
-      generatedResponse,
-      strategy,
-      evaluation.feedback
-    );
-
-    const finalEval = await this.evaluateResponse(
-      originalMessage,
-      improved,
-      strategy
-    );
-
-    return { response: improved, evaluation: finalEval };
+    return { response: current, evaluation };
   }
 }

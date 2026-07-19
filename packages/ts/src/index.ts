@@ -8,4 +8,6 @@ export type {
   EvaluationResult,
   PrimaryEmotion,
   EmotionalIntent,
+  ToneConfig,
 } from "./types";
+export { HEIError, HEIValidationError } from "./types";
