@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from openai import OpenAI
 
-from .models import EmotionResult, IntentResult, StrategyResult
+from .models import EmotionResult, IntentResult, StrategyResult, ToneConfig
+
+logger = logging.getLogger("hei.strategy")
 
 
 STRATEGY_SYSTEM_PROMPT = """You are an expert conversation strategist.
@@ -64,13 +67,26 @@ Intent analysis:
             response_format={"type": "json_object"},
         )
 
-        data = json.loads(response.choices[0].message.content or "{}")
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse strategy JSON: {raw}")
+            raise ValueError(f"Invalid JSON from strategy model: {e}") from e
+
+        tone_data = data.get("tone", {})
+        tone = ToneConfig(
+            warmth=float(tone_data.get("warmth", 0.7)),
+            directness=float(tone_data.get("directness", 0.5)),
+            formality=float(tone_data.get("formality", 0.4)),
+            optimism=float(tone_data.get("optimism", 0.5)),
+        )
 
         return StrategyResult(
             current_emotion=data.get("current_emotion", emotion.primary.value),
             target_outcome=data.get("target_outcome", "feel understood"),
             recommended_strategy=data.get("recommended_strategy", "validate and support"),
-            tone=data.get("tone", {"warmth": 0.7, "directness": 0.5, "formality": 0.4, "optimism": 0.5}),
+            tone=tone,
             things_to_avoid=data.get("things_to_avoid", []),
             suggested_approach=data.get("suggested_approach", ""),
             reasoning=data.get("reasoning", ""),

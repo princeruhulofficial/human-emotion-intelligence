@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Optional
 from openai import OpenAI
 
 from .models import EvaluationResult, StrategyResult
+
+logger = logging.getLogger("hei.evaluation")
 
 
 EVALUATION_SYSTEM_PROMPT = """You are a strict but fair evaluator of conversational AI responses.
@@ -90,7 +93,12 @@ Generated response to evaluate:
             response_format={"type": "json_object"},
         )
 
-        data = json.loads(response.choices[0].message.content or "{}")
+        raw = response.choices[0].message.content or "{}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse evaluation JSON: {raw}")
+            raise ValueError(f"Invalid JSON from evaluation model: {e}") from e
 
         return EvaluationResult(
             empathy_score=float(data.get("empathy_score", 5)),
