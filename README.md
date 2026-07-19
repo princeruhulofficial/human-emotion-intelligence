@@ -140,6 +140,8 @@ It makes every LLM emotionally smarter.
 
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [API Reference](docs/api-reference.md)
+- [Philosophy](docs/philosophy.md)
 - [Changelog](CHANGELOG.md)
 - [Product Requirements Document](PRD.md)
 
