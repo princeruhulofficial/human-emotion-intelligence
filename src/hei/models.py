@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PrimaryEmotion(str, Enum):
@@ -37,6 +37,13 @@ class EmotionalIntent(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ToneConfig(BaseModel):
+    warmth: float = Field(default=0.7, ge=0.0, le=1.0)
+    directness: float = Field(default=0.5, ge=0.0, le=1.0)
+    formality: float = Field(default=0.4, ge=0.0, le=1.0)
+    optimism: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class EmotionResult(BaseModel):
     primary: PrimaryEmotion
     secondary: Optional[PrimaryEmotion] = None
@@ -57,14 +64,7 @@ class StrategyResult(BaseModel):
     current_emotion: str
     target_outcome: str
     recommended_strategy: str
-    tone: dict = Field(
-        default_factory=lambda: {
-            "warmth": 0.7,
-            "directness": 0.5,
-            "formality": 0.4,
-            "optimism": 0.5,
-        }
-    )
+    tone: ToneConfig = Field(default_factory=ToneConfig)
     things_to_avoid: List[str] = Field(default_factory=list)
     suggested_approach: str
     reasoning: str

@@ -1,14 +1,27 @@
 from __future__ import annotations
 
-from typing import Optional
+import logging
+from typing import Optional, Tuple
 
-from openai import OpenAI
+from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from .emotion import EmotionAnalyzer
 from .intent import IntentDetector
 from .strategy import StrategyPlanner
 from .evaluation import ResponseEvaluator
 from .models import HEIResponse, EvaluationResult, StrategyResult
+
+logger = logging.getLogger("hei")
+
+
+class HEIError(Exception):
+    """Base exception for HEI"""
+    pass
+
+
+class HEIValidationError(HEIError):
+    """Raised when input validation fails"""
+    pass
 
 
 class HEI:
@@ -21,17 +34,26 @@ class HEI:
         print(result.strategy.suggested_approach)
     """
 
+    MAX_MESSAGE_LENGTH = 8000
+
     def __init__(
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model: str = "gpt-4o-mini",
         client: Optional[OpenAI] = None,
+        timeout: float = 30.0,
+        max_retries: int = 2,
     ):
         if client:
             self.client = client
         else:
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout,
+                max_retries=max_retries,
+            )
 
         self.model = model
         self.emotion_analyzer = EmotionAnalyzer(self.client, model)
@@ -39,28 +61,54 @@ class HEI:
         self.strategy_planner = StrategyPlanner(self.client, model)
         self.evaluator = ResponseEvaluator(self.client, model)
 
+    def _validate_message(self, message: str) -> str:
+        if message is None:
+            raise HEIValidationError("message cannot be None")
+        if not isinstance(message, str):
+            raise HEIValidationError("message must be a string")
+
+        cleaned = message.strip()
+        if not cleaned:
+            raise HEIValidationError("message cannot be empty")
+
+        if len(cleaned) > self.MAX_MESSAGE_LENGTH:
+            raise HEIValidationError(
+                f"message too long ({len(cleaned)} chars). Max allowed: {self.MAX_MESSAGE_LENGTH}"
+            )
+
+        return cleaned
+
     def analyze(self, message: str) -> HEIResponse:
         """
         Full analysis pipeline:
         Emotion → Intent → Strategy
         """
-        emotion = self.emotion_analyzer.analyze(message)
+        message = self._validate_message(message)
 
-        emotion_context = (
-            f"{emotion.primary.value} (intensity {emotion.intensity}/10)"
-            + (f", hidden: {emotion.hidden.value}" if emotion.hidden else "")
-        )
+        try:
+            emotion = self.emotion_analyzer.analyze(message)
 
-        intent = self.intent_detector.detect(message, emotion_context)
-        strategy = self.strategy_planner.plan(message, emotion, intent)
+            emotion_context = (
+                f"{emotion.primary.value} (intensity {emotion.intensity}/10)"
+                + (f", hidden: {emotion.hidden.value}" if emotion.hidden else "")
+            )
 
-        return HEIResponse(
-            emotion=emotion,
-            intent=intent,
-            strategy=strategy,
-            raw_message=message,
-            model_used=self.model,
-        )
+            intent = self.intent_detector.detect(message, emotion_context)
+            strategy = self.strategy_planner.plan(message, emotion, intent)
+
+            return HEIResponse(
+                emotion=emotion,
+                intent=intent,
+                strategy=strategy,
+                raw_message=message,
+                model_used=self.model,
+            )
+        except (APIError, APITimeoutError, RateLimitError) as e:
+            logger.error(f"LLM API error during analyze: {e}")
+            raise HEIError(f"Failed to analyze message: {e}") from e
+        except Exception as e:
+            logger.exception("Unexpected error during analyze")
+            raise HEIError(f"Unexpected error: {e}") from e
 
     def evaluate_response(
         self,
@@ -69,7 +117,15 @@ class HEI:
         strategy: StrategyResult,
     ) -> EvaluationResult:
         """Evaluate a generated response against the planned strategy."""
-        return self.evaluator.evaluate(original_message, generated_response, strategy)
+        original_message = self._validate_message(original_message)
+        if not generated_response or not generated_response.strip():
+            raise HEIValidationError("generated_response cannot be empty")
+
+        try:
+            return self.evaluator.evaluate(original_message, generated_response, strategy)
+        except (APIError, APITimeoutError, RateLimitError) as e:
+            logger.error(f"LLM API error during evaluate: {e}")
+            raise HEIError(f"Failed to evaluate response: {e}") from e
 
     def improve_response(
         self,
@@ -77,27 +133,31 @@ class HEI:
         generated_response: str,
         strategy: StrategyResult,
         max_attempts: int = 1,
-    ) -> tuple[str, EvaluationResult]:
+    ) -> Tuple[str, EvaluationResult]:
         """
         Evaluate a response and automatically rewrite it if quality is low.
 
         Returns:
             (final_response, evaluation)
         """
-        evaluation = self.evaluate_response(original_message, generated_response, strategy)
+        original_message = self._validate_message(original_message)
+        if not generated_response or not generated_response.strip():
+            raise HEIValidationError("generated_response cannot be empty")
 
-        if not evaluation.should_rewrite or max_attempts <= 0:
-            return generated_response, evaluation
+        current_response = generated_response
+        evaluation = self.evaluate_response(original_message, current_response, strategy)
 
-        # Rewrite using feedback
-        improved = self.evaluator.rewrite(
-            original_message=original_message,
-            previous_response=generated_response,
-            strategy=strategy,
-            feedback=evaluation.feedback,
-        )
+        attempts = 0
+        while evaluation.should_rewrite and attempts < max_attempts:
+            attempts += 1
+            logger.info(f"Rewriting response (attempt {attempts}/{max_attempts})")
 
-        # Optional: re-evaluate the improved version
-        final_eval = self.evaluate_response(original_message, improved, strategy)
+            current_response = self.evaluator.rewrite(
+                original_message=original_message,
+                previous_response=current_response,
+                strategy=strategy,
+                feedback=evaluation.feedback,
+            )
+            evaluation = self.evaluate_response(original_message, current_response, strategy)
 
-        return improved, final_eval
+        return current_response, evaluation
