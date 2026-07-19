@@ -11,6 +11,11 @@ All notable changes to Human Emotion Intelligence (HEI) will be documented in th
   - Mood shift detection (improving / declining / intensifying / stabilizing)
   - Memory context injected into Strategy Planner
   - `hei.memory.get_timeline()`, `detect_mood_shift()`, `get_context_for_strategy()`
+- **MCP Server** (Model Context Protocol)
+  - Tools: `hei_analyze`, `hei_detect_emotion`, `hei_detect_intent`, `hei_get_mood_shift`, `hei_evaluate_response`
+  - Compatible with Claude Desktop, Cursor, Windsurf, etc.
+  - Docs: `docs/mcp.md`
+  - Entry point: `python -m hei.mcp_server` or `hei-mcp`
 - New example: `examples/memory_example.py`
 
 ### Changed
