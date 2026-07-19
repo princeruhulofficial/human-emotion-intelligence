@@ -13,22 +13,69 @@ It analyzes emotion, detects intent, plans a response strategy, and evaluates th
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
+git clone https://github.com/princeruhulofficial/human-emotion-intelligence.git
+cd human-emotion-intelligence
 pip install -e .
-export OPENAI_API_KEY=sk-...
+```
+
+### 2. Setup API Key
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your key.
+
+#### Option A: OpenRouter (Free models available — Recommended for testing)
+
+1. Go to [https://openrouter.ai](https://openrouter.ai) and create a free account
+2. Generate an API key
+3. Put in `.env`:
+
+```env
+OPENAI_API_KEY=sk-or-v1-your-key-here
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+HEI_MODEL=google/gemma-2-9b-it:free
+```
+
+Popular free models on OpenRouter:
+- `google/gemma-2-9b-it:free`
+- `meta-llama/llama-3.2-3b-instruct:free`
+- `microsoft/phi-3-mini-128k-instruct:free`
+
+#### Option B: Official OpenAI
+
+```env
+OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=   (leave empty)
+HEI_MODEL=gpt-4o-mini
+```
+
+### 3. Run Example
+
+```bash
 python examples/basic_usage.py
 ```
+
+### Code Example
 
 ```python
 from hei import HEI
 
-hei = HEI(api_key="sk-...")
+hei = HEI(
+    api_key="sk-or-v1-...",
+    base_url="https://openrouter.ai/api/v1",
+    model="google/gemma-2-9b-it:free"
+)
 
 result = hei.analyze("I guess my startup is over.")
 
-print(result.emotion.primary)          # sadness
-print(result.emotion.hidden)           # fear / disappointment
-print(result.intent.primary_intent)    # seeking_comfort
+print(result.emotion.primary)           # sadness
+print(result.emotion.hidden)            # fear / disappointment
+print(result.intent.primary_intent)     # seeking_comfort
 print(result.strategy.suggested_approach)
 ```
 
@@ -72,12 +119,12 @@ HEI plans the emotional strategy first, then lets the LLM execute it.
 ## Roadmap
 
 - [x] Core Emotion + Intent + Strategy (MVP)
+- [x] OpenRouter / any OpenAI-compatible support
 - [ ] Emotional Memory
 - [ ] Cultural Awareness
 - [ ] Personality Layer
 - [ ] TypeScript SDK
 - [ ] MCP Server
-- [ ] Self-hosted option improvements
 
 ## License
 
