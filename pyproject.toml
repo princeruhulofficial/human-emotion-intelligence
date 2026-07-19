@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "human-emotion-intelligence"
-version = "0.1.0"
+version = "0.1.1"
 description = "Human Emotion Intelligence (HEI) - Conversation Intelligence Layer for AI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,3 +52,8 @@ target-version = "py310"
 [tool.mypy]
 python_version = "3.10"
 strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
