@@ -1,6 +1,8 @@
 # Getting Started with HEI
 
-## Installation
+This guide will get you from zero to a working HEI integration in under 5 minutes.
+
+## 1. Installation
 
 ```bash
 git clone https://github.com/princeruhulofficial/human-emotion-intelligence.git
@@ -8,30 +10,40 @@ cd human-emotion-intelligence
 pip install -e ".[dev]"
 ```
 
-## Configuration
-
-Copy the example env file:
+## 2. Set your API Key
 
 ```bash
 cp .env.example .env
 ```
 
-### Using OpenRouter (Free)
+Open `.env` and add your key.
+
+### Recommended for testing: OpenRouter (has free models)
 
 ```env
-OPENAI_API_KEY=sk-or-v1-your-key
+OPENAI_API_KEY=sk-or-v1-your-key-here
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 HEI_MODEL=google/gemma-2-9b-it:free
 ```
 
-### Using Official OpenAI
+Get a free key at [openrouter.ai](https://openrouter.ai).
+
+### Or use official OpenAI
 
 ```env
 OPENAI_API_KEY=sk-...
 HEI_MODEL=gpt-4o-mini
 ```
 
-## Basic Usage (Python)
+## 3. Run the example
+
+```bash
+python examples/basic_usage.py
+```
+
+You should see emotion, intent, and strategy output for several example messages.
+
+## 4. Use it in your code
 
 ```python
 from hei import HEI
@@ -44,21 +56,22 @@ hei = HEI(
 
 result = hei.analyze("I guess my startup is over.")
 
-print(result.emotion.primary)               # sadness
-print(result.emotion.hidden)                # fear / disappointment
-print(result.emotion.intensity)             # 7-9
-print(result.intent.primary_intent)         # seeking_comfort
-print(result.strategy.suggested_approach)
-print(result.strategy.things_to_avoid)
+print("Primary emotion :", result.emotion.primary)
+print("Hidden emotion  :", result.emotion.hidden)
+print("Intensity       :", result.emotion.intensity)
+print("Intent          :", result.intent.primary_intent)
+print("Strategy        :", result.strategy.recommended_strategy)
+print("Approach        :", result.strategy.suggested_approach)
+print("Avoid           :", result.strategy.things_to_avoid)
 ```
 
-## Improve an Existing Response
+## 5. Improve an existing LLM response
 
 ```python
 analysis = hei.analyze(user_message)
 
-# Your LLM generates something...
-raw_reply = your_llm.generate(...)
+# Your own LLM call
+raw_reply = call_your_llm(user_message)
 
 final_reply, evaluation = hei.improve_response(
     original_message=user_message,
@@ -71,13 +84,8 @@ print(final_reply)
 print("Empathy score:", evaluation.empathy_score)
 ```
 
-## Running Tests
+## Next Steps
 
-```bash
-# Unit tests (no API key needed)
-pytest tests/test_validation.py -v
-
-# Golden set (needs API key)
-export OPENAI_API_KEY=sk-...
-pytest tests/test_golden.py -v -s
-```
+- Read the [Architecture](architecture.md) to understand the internal flow
+- Check the [API Reference](api-reference.md)
+- See the [Philosophy](philosophy.md) behind HEI
