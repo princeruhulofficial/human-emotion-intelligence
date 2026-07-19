@@ -12,7 +12,7 @@ license = "MIT"
 authors = [
     { name = "Founding Team", email = "princeruhulofficial@gmail.com" }
 ]
-keywords = ["emotion", "ai", "llm", "empathy", "conversation", "intelligence", "mcp"]
+keywords = ["emotion", "ai", "llm", "empathy", "conversation", "intelligence", "mcp", "api"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -40,6 +40,10 @@ dev = [
 mcp = [
     "mcp>=1.0.0",
 ]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/princeruhulofficial/human-emotion-intelligence"
@@ -47,6 +51,7 @@ Repository = "https://github.com/princeruhulofficial/human-emotion-intelligence"
 
 [project.scripts]
 hei-mcp = "hei.mcp_server:main"
+hei-api = "hei.api:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hei"]
