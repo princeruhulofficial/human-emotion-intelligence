@@ -11,6 +11,10 @@ All notable changes to Human Emotion Intelligence (HEI) will be documented in th
   - `getMoodShift()`, timeline, context-for-strategy
   - Unit tests with Vitest
 - **Python memory unit tests** (`tests/test_memory.py`)
+- **GitHub Actions CI**
+  - Python 3.10 / 3.11 / 3.12 matrix
+  - TypeScript typecheck + tests + build
+  - Unit tests run without API keys
 
 ### Changed
 - TypeScript SDK version → 0.3.0
