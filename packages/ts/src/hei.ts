@@ -21,14 +21,16 @@ import {
   EVALUATION_SYSTEM_PROMPT,
   REWRITE_SYSTEM_PROMPT,
 } from "./prompts";
+import { EmotionalMemory, type MoodShift } from "./memory";
 
 const MAX_MESSAGE_LENGTH = 8000;
 
 export class HEI {
   private client: OpenAI;
   private model: string;
+  public memory: EmotionalMemory;
 
-  constructor(config: HEIConfig) {
+  constructor(config: HEIConfig & { memory?: EmotionalMemory } = { apiKey: "" }) {
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
@@ -36,6 +38,7 @@ export class HEI {
       maxRetries: config.maxRetries ?? 2,
     });
     this.model = config.model ?? "gpt-4o-mini";
+    this.memory = config.memory ?? new EmotionalMemory();
   }
 
   private validateMessage(message: string): string {
@@ -109,9 +112,10 @@ export class HEI {
   async planStrategy(
     message: string,
     emotion: EmotionResult,
-    intent: IntentResult
+    intent: IntentResult,
+    memoryContext?: string | null
   ): Promise<StrategyResult> {
-    const context = `User message: ${message}
+    let context = `User message: ${message}
 
 Emotion analysis:
 - Primary: ${emotion.primary}
@@ -124,6 +128,10 @@ Intent analysis:
 - Primary intent: ${intent.primary_intent}
 - Confidence: ${intent.confidence}`;
 
+    if (memoryContext) {
+      context += `\n\nPrevious emotional context from this conversation:\n${memoryContext}`;
+    }
+
     return this.chatJson<StrategyResult>(
       STRATEGY_SYSTEM_PROMPT,
       context,
@@ -133,8 +141,9 @@ Intent analysis:
 
   /**
    * Full pipeline: Emotion → Intent → Strategy
+   * Pass sessionId to enable Emotional Memory across turns.
    */
-  async analyze(message: string): Promise<HEIResponse> {
+  async analyze(message: string, sessionId?: string): Promise<HEIResponse> {
     const clean = this.validateMessage(message);
 
     const emotion = await this.analyzeEmotion(clean);
@@ -144,7 +153,16 @@ Intent analysis:
       (emotion.hidden ? `, hidden: ${emotion.hidden}` : "");
 
     const intent = await this.detectIntent(clean, emotionContext);
-    const strategy = await this.planStrategy(clean, emotion, intent);
+
+    const memoryContext = sessionId
+      ? this.memory.getContextForStrategy(sessionId)
+      : null;
+
+    const strategy = await this.planStrategy(clean, emotion, intent, memoryContext);
+
+    if (sessionId) {
+      this.memory.addTurn(sessionId, clean, emotion, intent);
+    }
 
     return {
       emotion,
@@ -153,6 +171,11 @@ Intent analysis:
       raw_message: clean,
       model_used: this.model,
     };
+  }
+
+  /** Convenience helper for mood shift detection */
+  getMoodShift(sessionId: string): MoodShift {
+    return this.memory.detectMoodShift(sessionId);
   }
 
   async evaluateResponse(

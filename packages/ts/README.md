@@ -6,8 +6,8 @@
 
 ```bash
 npm install @hei/sdk
-# or
-pnpm add @hei/sdk
+# or from monorepo
+cd packages/ts && npm install && npm run build
 ```
 
 ## Quick Start
@@ -17,38 +17,46 @@ import { HEI } from "@hei/sdk";
 
 const hei = new HEI({
   apiKey: process.env.OPENAI_API_KEY!,
-  baseURL: process.env.OPENAI_BASE_URL, // optional (OpenRouter, Groq, etc.)
+  baseURL: process.env.OPENAI_BASE_URL, // optional (OpenRouter, etc.)
   model: "gpt-4o-mini",
 });
 
+// Without memory
 const result = await hei.analyze("I guess my startup is over.");
 
-console.log(result.emotion.primary);        // "sadness"
-console.log(result.emotion.hidden);         // "fear"
-console.log(result.intent.primary_intent);  // "seeking_comfort"
-console.log(result.strategy.suggested_approach);
+// With Emotional Memory (session)
+const r1 = await hei.analyze("I guess my startup is over.", "user_123");
+const r2 = await hei.analyze("I'm trying to stay positive", "user_123");
+
+const shift = hei.getMoodShift("user_123");
+console.log(shift.summary);
+
+const timeline = hei.memory.getTimeline("user_123");
 ```
 
-## Full Pipeline Example
+## Emotional Memory API
 
 ```ts
-const analysis = await hei.analyze(userMessage);
+hei.memory.getTimeline(sessionId)
+hei.memory.detectMoodShift(sessionId)
+hei.memory.getContextForStrategy(sessionId)
+hei.memory.clearSession(sessionId)
+hei.getMoodShift(sessionId)  // convenience
+```
+
+## Full Pipeline + Improve
+
+```ts
+const analysis = await hei.analyze(userMessage, sessionId);
 
 // Your LLM generates a response using the strategy...
-const llmResponse = await yourLLM.generate({
-  system: `Follow this strategy: ${JSON.stringify(analysis.strategy)}`,
-  user: userMessage,
-});
+const llmResponse = await yourLLM.generate({ ... });
 
-// Evaluate + auto-improve if needed
 const { response: finalResponse, evaluation } = await hei.improveResponse(
   userMessage,
   llmResponse,
   analysis.strategy
 );
-
-console.log(finalResponse);
-console.log("Empathy score:", evaluation.empathy_score);
 ```
 
 ## OpenRouter (Free models)
@@ -61,12 +69,11 @@ const hei = new HEI({
 });
 ```
 
-## API
+## Tests
 
-- `analyze(message)` → full Emotion + Intent + Strategy
-- `evaluateResponse(...)` → scores a response
-- `rewrite(...)` → generates a better version
-- `improveResponse(...)` → evaluate + auto-rewrite if needed
+```bash
+npm test
+```
 
 ## License
 
