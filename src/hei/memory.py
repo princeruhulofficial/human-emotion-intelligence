@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import sqlite3
 import time
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Optional
 
-from .models import EmotionResult, IntentResult, PrimaryEmotion
+from .models import EmotionResult, IntentResult
 
+logger = logging.getLogger("hei.memory")
+
+
+# ---------------------------------------------------------------------------
+# Shared data types
+# ---------------------------------------------------------------------------
 
 @dataclass
 class MemoryTurn:
@@ -34,13 +46,27 @@ class MemoryTurn:
             "reasoning": self.reasoning,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "MemoryTurn":
+        return cls(
+            timestamp=float(data["timestamp"]),
+            message=data["message"],
+            primary_emotion=data["primary_emotion"],
+            secondary_emotion=data.get("secondary_emotion"),
+            hidden_emotion=data.get("hidden_emotion"),
+            intensity=int(data["intensity"]),
+            confidence=float(data["confidence"]),
+            intent=data["intent"],
+            reasoning=data.get("reasoning", ""),
+        )
+
 
 class MoodShiftType(str, Enum):
     NONE = "none"
-    IMPROVING = "improving"          # negative → more positive
-    DECLINING = "declining"          # positive → more negative
-    INTENSIFYING = "intensifying"    # same polarity but stronger
-    STABILIZING = "stabilizing"      # high intensity → lower
+    IMPROVING = "improving"
+    DECLINING = "declining"
+    INTENSIFYING = "intensifying"
+    STABILIZING = "stabilizing"
     MIXED = "mixed"
 
 
@@ -54,22 +80,185 @@ class MoodShift:
     summary: str
 
 
-# Simple polarity map for mood shift detection
 POSITIVE = {"happiness", "excitement", "hope", "pride", "gratitude", "curiosity"}
 NEGATIVE = {"sadness", "anger", "fear", "anxiety", "shame", "guilt", "loneliness", "frustration"}
 
 
+# ---------------------------------------------------------------------------
+# Store backends
+# ---------------------------------------------------------------------------
+
+class MemoryStore(ABC):
+    """Abstract storage backend for emotional timelines."""
+
+    @abstractmethod
+    def load(self, session_id: str) -> List[MemoryTurn]:
+        ...
+
+    @abstractmethod
+    def save(self, session_id: str, turns: List[MemoryTurn]) -> None:
+        ...
+
+    @abstractmethod
+    def delete(self, session_id: str) -> None:
+        ...
+
+
+class InMemoryStore(MemoryStore):
+    def __init__(self) -> None:
+        self._data: Dict[str, List[MemoryTurn]] = {}
+
+    def load(self, session_id: str) -> List[MemoryTurn]:
+        return list(self._data.get(session_id, []))
+
+    def save(self, session_id: str, turns: List[MemoryTurn]) -> None:
+        self._data[session_id] = list(turns)
+
+    def delete(self, session_id: str) -> None:
+        self._data.pop(session_id, None)
+
+
+class SQLiteStore(MemoryStore):
+    """Zero-config persistent store using SQLite."""
+
+    def __init__(self, path: str = "hei_memory.db") -> None:
+        self.path = path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS turns (
+                    session_id TEXT NOT NULL,
+                    idx INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    PRIMARY KEY (session_id, idx)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id)"
+            )
+
+    def load(self, session_id: str) -> List[MemoryTurn]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM turns WHERE session_id = ? ORDER BY idx ASC",
+                (session_id,),
+            ).fetchall()
+        return [MemoryTurn.from_dict(json.loads(r[0])) for r in rows]
+
+    def save(self, session_id: str, turns: List[MemoryTurn]) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+            conn.executemany(
+                "INSERT INTO turns (session_id, idx, payload) VALUES (?, ?, ?)",
+                [
+                    (session_id, i, json.dumps(t.to_dict(), ensure_ascii=False))
+                    for i, t in enumerate(turns)
+                ],
+            )
+
+    def delete(self, session_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+
+
+class RedisStore(MemoryStore):
+    """Redis-backed store for multi-process / production use."""
+
+    def __init__(self, url: str = "redis://localhost:6379/0", key_prefix: str = "hei:mem:") -> None:
+        try:
+            import redis  # type: ignore
+        except ImportError as e:
+            raise ImportError(
+                "Redis backend requires the 'redis' package. Install with: pip install redis"
+            ) from e
+
+        self._client = redis.Redis.from_url(url, decode_responses=True)
+        self.prefix = key_prefix
+
+    def _key(self, session_id: str) -> str:
+        return f"{self.prefix}{session_id}"
+
+    def load(self, session_id: str) -> List[MemoryTurn]:
+        raw = self._client.get(self._key(session_id))
+        if not raw:
+            return []
+        data = json.loads(raw)
+        return [MemoryTurn.from_dict(item) for item in data]
+
+    def save(self, session_id: str, turns: List[MemoryTurn]) -> None:
+        payload = json.dumps([t.to_dict() for t in turns], ensure_ascii=False)
+        self._client.set(self._key(session_id), payload)
+
+    def delete(self, session_id: str) -> None:
+        self._client.delete(self._key(session_id))
+
+
+# ---------------------------------------------------------------------------
+# High-level EmotionalMemory (public API — unchanged for callers)
+# ---------------------------------------------------------------------------
+
 class EmotionalMemory:
     """
-    In-memory emotional timeline store.
+    Emotional timeline with pluggable storage backends.
 
-    Keyed by session_id.
-    Later this can be swapped for Redis / Postgres without changing the HEI API.
+    Backends:
+      - memory  (default, process-local)
+      - sqlite  (persistent file, zero-config)
+      - redis   (shared / multi-process)
+
+    Example:
+        mem = EmotionalMemory(backend="sqlite", sqlite_path="./data/hei.db")
+        mem = EmotionalMemory.from_env()  # reads HEI_MEMORY_BACKEND etc.
     """
 
-    def __init__(self, max_turns_per_session: int = 50):
-        self._store: Dict[str, List[MemoryTurn]] = {}
+    def __init__(
+        self,
+        max_turns_per_session: int = 50,
+        backend: str = "memory",
+        sqlite_path: str = "hei_memory.db",
+        redis_url: str = "redis://localhost:6379/0",
+        store: Optional[MemoryStore] = None,
+    ):
         self.max_turns = max_turns_per_session
+
+        if store is not None:
+            self._store = store
+        else:
+            backend = backend.lower().strip()
+            if backend == "sqlite":
+                self._store = SQLiteStore(sqlite_path)
+                logger.info("EmotionalMemory using SQLite (%s)", sqlite_path)
+            elif backend == "redis":
+                self._store = RedisStore(redis_url)
+                logger.info("EmotionalMemory using Redis (%s)", redis_url)
+            else:
+                self._store = InMemoryStore()
+                logger.info("EmotionalMemory using in-memory store")
+
+    @classmethod
+    def from_env(cls, max_turns_per_session: int = 50) -> "EmotionalMemory":
+        """Create memory from environment variables."""
+        backend = os.getenv("HEI_MEMORY_BACKEND", "memory").lower()
+        sqlite_path = os.getenv("HEI_MEMORY_PATH", "hei_memory.db")
+        redis_url = os.getenv("HEI_REDIS_URL", "redis://localhost:6379/0")
+        return cls(
+            max_turns_per_session=max_turns_per_session,
+            backend=backend,
+            sqlite_path=sqlite_path,
+            redis_url=redis_url,
+        )
+
+    # ---- public API (same as before) ----
 
     def add_turn(
         self,
@@ -78,8 +267,7 @@ class EmotionalMemory:
         emotion: EmotionResult,
         intent: IntentResult,
     ) -> MemoryTurn:
-        if session_id not in self._store:
-            self._store[session_id] = []
+        turns = self._store.load(session_id)
 
         turn = MemoryTurn(
             timestamp=time.time(),
@@ -92,25 +280,23 @@ class EmotionalMemory:
             intent=intent.primary_intent.value,
             reasoning=emotion.reasoning,
         )
+        turns.append(turn)
 
-        self._store[session_id].append(turn)
+        if len(turns) > self.max_turns:
+            turns = turns[-self.max_turns :]
 
-        # Keep only recent turns
-        if len(self._store[session_id]) > self.max_turns:
-            self._store[session_id] = self._store[session_id][-self.max_turns :]
-
+        self._store.save(session_id, turns)
         return turn
 
     def get_timeline(self, session_id: str) -> List[MemoryTurn]:
-        return list(self._store.get(session_id, []))
+        return self._store.load(session_id)
 
     def get_last_turn(self, session_id: str) -> Optional[MemoryTurn]:
-        timeline = self._store.get(session_id, [])
+        timeline = self.get_timeline(session_id)
         return timeline[-1] if timeline else None
 
     def get_recent_emotions(self, session_id: str, n: int = 5) -> List[str]:
-        timeline = self.get_timeline(session_id)
-        return [t.primary_emotion for t in timeline[-n:]]
+        return [t.primary_emotion for t in self.get_timeline(session_id)[-n:]]
 
     def detect_mood_shift(self, session_id: str) -> MoodShift:
         timeline = self.get_timeline(session_id)
@@ -125,9 +311,7 @@ class EmotionalMemory:
                 summary="Not enough turns to detect a shift.",
             )
 
-        prev = timeline[-2]
-        curr = timeline[-1]
-
+        prev, curr = timeline[-2], timeline[-1]
         prev_pol = self._polarity(prev.primary_emotion)
         curr_pol = self._polarity(curr.primary_emotion)
 
@@ -145,7 +329,10 @@ class EmotionalMemory:
             summary = f"{curr.primary_emotion} is stabilizing ({prev.intensity} → {curr.intensity})."
         else:
             shift = MoodShiftType.MIXED
-            summary = f"Mood moved from {prev.primary_emotion} ({prev.intensity}) to {curr.primary_emotion} ({curr.intensity})."
+            summary = (
+                f"Mood moved from {prev.primary_emotion} ({prev.intensity}) "
+                f"to {curr.primary_emotion} ({curr.intensity})."
+            )
 
         return MoodShift(
             shift_type=shift,
@@ -157,12 +344,11 @@ class EmotionalMemory:
         )
 
     def get_context_for_strategy(self, session_id: str) -> str:
-        """Return a short text summary of recent emotional context for the Strategy Planner."""
         timeline = self.get_timeline(session_id)
         if not timeline:
             return "No previous emotional context."
 
-        recent = timeline[-4:]  # last few turns
+        recent = timeline[-4:]
         lines = []
         for t in recent:
             hidden = f", hidden={t.hidden_emotion}" if t.hidden_emotion else ""
@@ -171,13 +357,15 @@ class EmotionalMemory:
             )
 
         shift = self.detect_mood_shift(session_id)
-        shift_text = f"\nRecent mood shift: {shift.summary}" if shift.shift_type != MoodShiftType.NONE else ""
-
+        shift_text = (
+            f"\nRecent mood shift: {shift.summary}"
+            if shift.shift_type != MoodShiftType.NONE
+            else ""
+        )
         return "Recent emotional timeline:\n" + "\n".join(lines) + shift_text
 
     def clear_session(self, session_id: str) -> None:
-        if session_id in self._store:
-            del self._store[session_id]
+        self._store.delete(session_id)
 
     def _polarity(self, emotion: str) -> str:
         if emotion in POSITIVE:
