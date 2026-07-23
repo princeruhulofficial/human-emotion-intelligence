@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional, Tuple
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
@@ -35,12 +36,13 @@ class HEI:
         # Without memory
         result = hei.analyze("I guess my startup is over.")
 
-        # With emotional memory
+        # With emotional memory (in-memory by default)
         result = hei.analyze("I guess my startup is over.", session_id="user_123")
-        result2 = hei.analyze("I'm trying to stay positive", session_id="user_123")
 
-        timeline = hei.memory.get_timeline("user_123")
-        shift = hei.memory.detect_mood_shift("user_123")
+        # Persistent memory via env:
+        #   HEI_MEMORY_BACKEND=sqlite
+        #   HEI_MEMORY_PATH=./data/hei.db
+        hei = HEI(api_key="sk-...", memory=EmotionalMemory.from_env())
     """
 
     MAX_MESSAGE_LENGTH = 8000
@@ -54,6 +56,7 @@ class HEI:
         timeout: float = 30.0,
         max_retries: int = 2,
         memory: Optional[EmotionalMemory] = None,
+        memory_backend: Optional[str] = None,
     ):
         if client:
             self.client = client
@@ -70,7 +73,18 @@ class HEI:
         self.intent_detector = IntentDetector(self.client, model)
         self.strategy_planner = StrategyPlanner(self.client, model)
         self.evaluator = ResponseEvaluator(self.client, model)
-        self.memory = memory or EmotionalMemory()
+
+        if memory is not None:
+            self.memory = memory
+        elif memory_backend or os.getenv("HEI_MEMORY_BACKEND"):
+            backend = memory_backend or os.getenv("HEI_MEMORY_BACKEND", "memory")
+            self.memory = EmotionalMemory(
+                backend=backend,
+                sqlite_path=os.getenv("HEI_MEMORY_PATH", "hei_memory.db"),
+                redis_url=os.getenv("HEI_REDIS_URL", "redis://localhost:6379/0"),
+            )
+        else:
+            self.memory = EmotionalMemory()
 
     def _validate_message(self, message: str) -> str:
         if message is None:
@@ -112,7 +126,6 @@ class HEI:
 
             intent = self.intent_detector.detect(message, emotion_context)
 
-            # Build memory context if we have a session
             memory_context = None
             if session_id:
                 memory_context = self.memory.get_context_for_strategy(session_id)
@@ -124,7 +137,6 @@ class HEI:
                 memory_context=memory_context,
             )
 
-            # Record this turn in memory
             if session_id:
                 self.memory.add_turn(
                     session_id=session_id,

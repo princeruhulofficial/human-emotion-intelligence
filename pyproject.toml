@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "human-emotion-intelligence"
-version = "0.2.0"
+version = "0.3.0"
 description = "Human Emotion Intelligence (HEI) - Conversation Intelligence Layer for AI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,9 @@ mcp = [
 api = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+]
+redis = [
+    "redis>=5.0",
 ]
 
 [project.urls]
