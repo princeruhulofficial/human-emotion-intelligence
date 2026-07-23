@@ -16,13 +16,10 @@ from .models import EmotionResult, IntentResult
 logger = logging.getLogger("hei.memory")
 
 
-# ---------------------------------------------------------------------------
-# Shared data types
-# ---------------------------------------------------------------------------
-
 @dataclass
 class MemoryTurn:
     """One turn in a conversation session."""
+
     timestamp: float
     message: str
     primary_emotion: str
@@ -32,6 +29,7 @@ class MemoryTurn:
     confidence: float
     intent: str
     reasoning: str = ""
+    salience: float = 0.5  # 0-1 emotional importance for retrieval
 
     def to_dict(self) -> dict:
         return {
@@ -44,6 +42,7 @@ class MemoryTurn:
             "confidence": self.confidence,
             "intent": self.intent,
             "reasoning": self.reasoning,
+            "salience": self.salience,
         }
 
     @classmethod
@@ -58,6 +57,7 @@ class MemoryTurn:
             confidence=float(data["confidence"]),
             intent=data["intent"],
             reasoning=data.get("reasoning", ""),
+            salience=float(data.get("salience", 0.5)),
         )
 
 
@@ -80,17 +80,51 @@ class MoodShift:
     summary: str
 
 
-POSITIVE = {"happiness", "excitement", "hope", "pride", "gratitude", "curiosity"}
-NEGATIVE = {"sadness", "anger", "fear", "anxiety", "shame", "guilt", "loneliness", "frustration"}
+POSITIVE = {
+    "happiness",
+    "excitement",
+    "hope",
+    "pride",
+    "gratitude",
+    "curiosity",
+    "trust",
+    "love",
+    "optimism",
+    "anticipation",
+    "surprise",
+}
+NEGATIVE = {
+    "sadness",
+    "anger",
+    "fear",
+    "anxiety",
+    "shame",
+    "guilt",
+    "loneliness",
+    "frustration",
+    "disgust",
+    "disappointment",
+    "burnout",
+}
 
 
-# ---------------------------------------------------------------------------
-# Store backends
-# ---------------------------------------------------------------------------
+def compute_salience(emotion: EmotionResult, intent: IntentResult) -> float:
+    """Heuristic emotional salience for memory retrieval (0-1)."""
+    intensity_n = emotion.intensity / 10.0
+    conf = emotion.confidence
+    hidden_boost = 0.15 if emotion.hidden else 0.0
+    high_stakes_intents = {
+        "seeking_comfort",
+        "venting",
+        "celebrating",
+        "seeking_validation",
+    }
+    intent_boost = 0.1 if intent.primary_intent.value in high_stakes_intents else 0.0
+    raw = 0.45 * intensity_n + 0.25 * conf + hidden_boost + intent_boost
+    return max(0.0, min(1.0, raw))
+
 
 class MemoryStore(ABC):
-    """Abstract storage backend for emotional timelines."""
-
     @abstractmethod
     def load(self, session_id: str) -> List[MemoryTurn]:
         ...
@@ -119,8 +153,6 @@ class InMemoryStore(MemoryStore):
 
 
 class SQLiteStore(MemoryStore):
-    """Zero-config persistent store using SQLite."""
-
     def __init__(self, path: str = "hei_memory.db") -> None:
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -172,8 +204,6 @@ class SQLiteStore(MemoryStore):
 
 
 class RedisStore(MemoryStore):
-    """Redis-backed store for multi-process / production use."""
-
     def __init__(self, url: str = "redis://localhost:6379/0", key_prefix: str = "hei:mem:") -> None:
         try:
             import redis  # type: ignore
@@ -203,24 +233,7 @@ class RedisStore(MemoryStore):
         self._client.delete(self._key(session_id))
 
 
-# ---------------------------------------------------------------------------
-# High-level EmotionalMemory (public API — unchanged for callers)
-# ---------------------------------------------------------------------------
-
 class EmotionalMemory:
-    """
-    Emotional timeline with pluggable storage backends.
-
-    Backends:
-      - memory  (default, process-local)
-      - sqlite  (persistent file, zero-config)
-      - redis   (shared / multi-process)
-
-    Example:
-        mem = EmotionalMemory(backend="sqlite", sqlite_path="./data/hei.db")
-        mem = EmotionalMemory.from_env()  # reads HEI_MEMORY_BACKEND etc.
-    """
-
     def __init__(
         self,
         max_turns_per_session: int = 50,
@@ -247,7 +260,6 @@ class EmotionalMemory:
 
     @classmethod
     def from_env(cls, max_turns_per_session: int = 50) -> "EmotionalMemory":
-        """Create memory from environment variables."""
         backend = os.getenv("HEI_MEMORY_BACKEND", "memory").lower()
         sqlite_path = os.getenv("HEI_MEMORY_PATH", "hei_memory.db")
         redis_url = os.getenv("HEI_REDIS_URL", "redis://localhost:6379/0")
@@ -257,8 +269,6 @@ class EmotionalMemory:
             sqlite_path=sqlite_path,
             redis_url=redis_url,
         )
-
-    # ---- public API (same as before) ----
 
     def add_turn(
         self,
@@ -279,6 +289,7 @@ class EmotionalMemory:
             confidence=emotion.confidence,
             intent=intent.primary_intent.value,
             reasoning=emotion.reasoning,
+            salience=compute_salience(emotion, intent),
         )
         turns.append(turn)
 
@@ -348,12 +359,17 @@ class EmotionalMemory:
         if not timeline:
             return "No previous emotional context."
 
-        recent = timeline[-4:]
+        # Prefer recent turns, weighted by salience
+        recent = timeline[-8:]
+        ranked = sorted(recent, key=lambda t: (t.salience, t.timestamp), reverse=True)[:4]
+        ranked_chrono = sorted(ranked, key=lambda t: t.timestamp)
+
         lines = []
-        for t in recent:
+        for t in ranked_chrono:
             hidden = f", hidden={t.hidden_emotion}" if t.hidden_emotion else ""
             lines.append(
-                f"- {t.primary_emotion} (intensity {t.intensity}){hidden} | intent={t.intent}"
+                f"- {t.primary_emotion} (intensity {t.intensity}, salience {t.salience:.2f})"
+                f"{hidden} | intent={t.intent}"
             )
 
         shift = self.detect_mood_shift(session_id)
@@ -362,7 +378,7 @@ class EmotionalMemory:
             if shift.shift_type != MoodShiftType.NONE
             else ""
         )
-        return "Recent emotional timeline:\n" + "\n".join(lines) + shift_text
+        return "Recent emotional timeline (salience-aware):\n" + "\n".join(lines) + shift_text
 
     def clear_session(self, session_id: str) -> None:
         self._store.delete(session_id)

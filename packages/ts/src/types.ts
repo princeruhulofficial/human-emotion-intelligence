@@ -1,10 +1,16 @@
 import { z } from "zod";
 
 export const PrimaryEmotionSchema = z.enum([
+  // Plutchik-inspired core
   "happiness",
-  "sadness",
-  "anger",
+  "trust",
   "fear",
+  "surprise",
+  "sadness",
+  "disgust",
+  "anger",
+  "anticipation",
+  // Extended
   "anxiety",
   "excitement",
   "hope",
@@ -15,6 +21,10 @@ export const PrimaryEmotionSchema = z.enum([
   "frustration",
   "gratitude",
   "curiosity",
+  "love",
+  "optimism",
+  "disappointment",
+  "burnout",
   "neutral",
   "mixed",
 ]);
@@ -45,6 +55,14 @@ export const ToneConfigSchema = z.object({
 
 export type ToneConfig = z.infer<typeof ToneConfigSchema>;
 
+export const AppraisalSignalsSchema = z.object({
+  goal_relevance: z.number().min(0).max(1).default(0.5),
+  coping_potential: z.number().min(0).max(1).default(0.5),
+  agency: z.enum(["self", "other", "circumstances", "unknown"]).default("unknown"),
+});
+
+export type AppraisalSignals = z.infer<typeof AppraisalSignalsSchema>;
+
 export const EmotionResultSchema = z.object({
   primary: PrimaryEmotionSchema,
   secondary: PrimaryEmotionSchema.nullable().optional(),
@@ -52,6 +70,7 @@ export const EmotionResultSchema = z.object({
   intensity: z.number().min(1).max(10),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
+  appraisal: AppraisalSignalsSchema.optional(),
 });
 
 export type EmotionResult = z.infer<typeof EmotionResultSchema>;
@@ -65,8 +84,6 @@ export const IntentResultSchema = z.object({
 
 export type IntentResult = z.infer<typeof IntentResultSchema>;
 
-// Use .default on nested fields carefully — keep tone required at object level
-// so ZodType inference matches chatJson generic constraints.
 export const StrategyResultSchema = z.object({
   current_emotion: z.string(),
   target_outcome: z.string(),
@@ -96,6 +113,7 @@ export const EvaluationResultSchema = z.object({
   human_likeness: z.number().min(0).max(10),
   safety_score: z.number().min(0).max(10),
   clarity_score: z.number().min(0).max(10),
+  felt_understood_score: z.number().min(0).max(10).default(5),
   overall_score: z.number().min(0).max(10),
   feedback: z.string(),
   should_rewrite: z.boolean(),
@@ -118,7 +136,7 @@ export interface HEIConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
-  timeout?: number; // ms
+  timeout?: number;
   maxRetries?: number;
 }
 
