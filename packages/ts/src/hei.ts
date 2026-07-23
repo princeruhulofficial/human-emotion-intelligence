@@ -64,7 +64,7 @@ export class HEI {
   private async chatJson<T>(
     system: string,
     user: string,
-    schema: z.ZodType<T>
+    schema: z.ZodTypeAny
   ): Promise<T> {
     try {
       const response = await this.client.chat.completions.create({
@@ -79,7 +79,7 @@ export class HEI {
 
       const content = response.choices[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(content);
-      return schema.parse(parsed);
+      return schema.parse(parsed) as T;
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         throw new HEIError(`Schema validation failed: ${err.message}`);
