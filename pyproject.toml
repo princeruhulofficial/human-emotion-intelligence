@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "human-emotion-intelligence"
-version = "0.3.0"
+version = "0.4.0"
 description = "Human Emotion Intelligence (HEI) - Conversation Intelligence Layer for AI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,16 +37,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
-mcp = [
-    "mcp>=1.0.0",
-]
-api = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-]
-redis = [
-    "redis>=5.0",
-]
+mcp = ["mcp>=1.0.0"]
+api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
+redis = ["redis>=5.0"]
 
 [project.urls]
 Homepage = "https://github.com/princeruhulofficial/human-emotion-intelligence"
@@ -58,14 +51,6 @@ hei-api = "hei.api:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hei"]
-
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

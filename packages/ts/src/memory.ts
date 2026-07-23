@@ -18,6 +18,7 @@ export interface MemoryTurn {
   confidence: number;
   intent: string;
   reasoning: string;
+  salience: number;
 }
 
 export interface MoodShift {
@@ -36,6 +37,11 @@ const POSITIVE = new Set([
   "pride",
   "gratitude",
   "curiosity",
+  "trust",
+  "love",
+  "optimism",
+  "anticipation",
+  "surprise",
 ]);
 
 const NEGATIVE = new Set([
@@ -47,11 +53,32 @@ const NEGATIVE = new Set([
   "guilt",
   "loneliness",
   "frustration",
+  "disgust",
+  "disappointment",
+  "burnout",
 ]);
 
+const HIGH_STAKES_INTENTS = new Set([
+  "seeking_comfort",
+  "venting",
+  "celebrating",
+  "seeking_validation",
+]);
+
+export function computeSalience(
+  emotion: EmotionResult,
+  intent: IntentResult
+): number {
+  const intensityN = emotion.intensity / 10;
+  const conf = emotion.confidence;
+  const hiddenBoost = emotion.hidden ? 0.15 : 0;
+  const intentBoost = HIGH_STAKES_INTENTS.has(intent.primary_intent) ? 0.1 : 0;
+  const raw = 0.45 * intensityN + 0.25 * conf + hiddenBoost + intentBoost;
+  return Math.max(0, Math.min(1, raw));
+}
+
 /**
- * In-memory emotional timeline store.
- * Keyed by sessionId. Can later be swapped for Redis/SQLite without changing the HEI API.
+ * In-memory emotional timeline store with salience-aware context.
  */
 export class EmotionalMemory {
   private store: Map<string, MemoryTurn[]> = new Map();
@@ -81,6 +108,7 @@ export class EmotionalMemory {
       confidence: emotion.confidence,
       intent: intent.primary_intent,
       reasoning: emotion.reasoning,
+      salience: computeSalience(emotion, intent),
     };
 
     const timeline = this.store.get(sessionId)!;
@@ -170,17 +198,26 @@ export class EmotionalMemory {
       return "No previous emotional context.";
     }
 
-    const recent = timeline.slice(-4);
-    const lines = recent.map((t) => {
+    const recent = timeline.slice(-8);
+    const ranked = [...recent]
+      .sort((a, b) => b.salience - a.salience || b.timestamp - a.timestamp)
+      .slice(0, 4)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const lines = ranked.map((t) => {
       const hidden = t.hidden_emotion ? `, hidden=${t.hidden_emotion}` : "";
-      return `- ${t.primary_emotion} (intensity ${t.intensity})${hidden} | intent=${t.intent}`;
+      return `- ${t.primary_emotion} (intensity ${t.intensity}, salience ${t.salience.toFixed(2)})${hidden} | intent=${t.intent}`;
     });
 
     const shift = this.detectMoodShift(sessionId);
     const shiftText =
       shift.shift_type !== "none" ? `\nRecent mood shift: ${shift.summary}` : "";
 
-    return "Recent emotional timeline:\n" + lines.join("\n") + shiftText;
+    return (
+      "Recent emotional timeline (salience-aware):\n" +
+      lines.join("\n") +
+      shiftText
+    );
   }
 
   clearSession(sessionId: string): void {
