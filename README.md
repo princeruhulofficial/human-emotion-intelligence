@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-MVP-blue?style=flat-square" alt="Status">
-  <img src="https://img.shields.io/badge/Version-0.2.0-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.3.0-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square" alt="Python">
   <img src="https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square" alt="TypeScript">
   <img src="https://img.shields.io/badge/MCP-Supported-purple?style=flat-square" alt="MCP">
@@ -22,31 +22,23 @@
 
 ### What is HEI?
 
-**Human Emotion Intelligence (HEI)** is an open-source **Conversation Intelligence Layer** that sits between your users and any LLM (GPT, Claude, Gemini, Grok, Llama, etc.).
+**Human Emotion Intelligence (HEI)** is an open-source **Conversation Intelligence Layer** that sits between your users and any LLM.
 
-Instead of prompting an LLM to "be empathetic", HEI first:
-
-1. Detects emotion (including hidden emotions)
-2. Understands emotional intent
-3. Plans a response strategy
-4. Evaluates and optionally rewrites the final answer
-5. Remembers emotional context across turns
-
-**Result:** AI responses that make people feel genuinely understood.
+Instead of prompting an LLM to "be empathetic", HEI first detects emotion, understands intent, plans a response strategy, evaluates the reply, and remembers emotional context across turns.
 
 > Most AIs give generic empathy.  
 > HEI gives structured emotional reasoning.
 
 ---
 
-### Access Points (v0.2.0)
+### Access Points (v0.3.0)
 
-| Interface | Status | Use when |
-|-----------|--------|----------|
-| **Python SDK** | Ready | Backend services, notebooks, scripts |
-| **TypeScript SDK** | Ready | Node.js / frontend agents |
+| Interface | Status | Notes |
+|-----------|--------|-------|
+| **Python SDK** | Ready | Full features + persistent memory |
+| **TypeScript SDK** | Ready | Memory parity with Python |
 | **MCP Server** | Ready | Claude Desktop, Cursor, Windsurf |
-| **HTTP API** | Ready | API Gateway, microservices, any language |
+| **HTTP API** | Ready | API Gateway compatible |
 
 ---
 
@@ -64,29 +56,30 @@ python examples/basic_usage.py
 from hei import HEI
 
 hei = HEI(api_key="sk-...")
-
 result = hei.analyze("I guess my startup is over.", session_id="user_123")
 
-print(result.emotion.primary)           # sadness
-print(result.emotion.hidden)            # fear
-print(result.intent.primary_intent)     # seeking_comfort
+print(result.emotion.primary)
 print(result.strategy.suggested_approach)
+print(hei.get_mood_shift("user_123").summary)
 ```
 
-### MCP (Claude / Cursor)
+### Persistent Memory
 
 ```bash
-pip install -e ".[mcp]"
-export HEI_MCP_TOKEN=your-secret
+export HEI_MEMORY_BACKEND=sqlite
+export HEI_MEMORY_PATH=./data/hei_memory.db
+```
+
+```python
+hei = HEI(api_key="sk-...", memory_backend="sqlite")
+```
+
+### MCP / HTTP API
+
+```bash
+pip install -e ".[mcp]"   # or .[api]
 python -m hei.mcp_server
-```
-
-### HTTP API (API Gateway ready)
-
-```bash
-pip install -e ".[api]"
-export HEI_API_TOKEN=your-secret
-uvicorn hei.api:app --host 0.0.0.0 --port 8000
+uvicorn hei.api:app --port 8000
 ```
 
 ---
@@ -97,9 +90,9 @@ uvicorn hei.api:app --host 0.0.0.0 --port 8000
 - Emotional Intent Detection
 - Response Strategy Planner
 - Evaluation + Auto Rewrite
-- **Emotional Memory** (session timeline + mood shift)
+- Emotional Memory (in-memory / SQLite / Redis)
 - Model Agnostic (OpenAI, OpenRouter, Groq, local...)
-- Production hardening (validation, auth, rate limits)
+- Production hardening (validation, auth, rate limits, CI)
 
 ---
 
@@ -107,18 +100,12 @@ uvicorn hei.api:app --host 0.0.0.0 --port 8000
 
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [Emotional Memory](docs/memory.md)
 - [API Reference](docs/api-reference.md)
 - [MCP Server](docs/mcp.md)
 - [HTTP API / Gateway](docs/api-gateway.md)
 - [Philosophy](docs/philosophy.md)
 - [Changelog](CHANGELOG.md)
-
----
-
-### Non-Goals
-
-HEI will never claim to be a therapist, mind reader, or manipulation tool.  
-We optimize for **feeling understood**, not emotional surveillance.
 
 ---
 
@@ -130,5 +117,5 @@ MIT
 
 <p align="center">
   Built with ❤️ by the Founding Team<br>
-  <strong>v0.2.0</strong> — Shipped 19 July 2026
+  <strong>v0.3.0</strong> — Shipped 23 July 2026
 </p>
